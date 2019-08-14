@@ -1,4 +1,4 @@
-### After running the jobscraper.R script
+### After running the job_scrape_extract.R script
 ### create a corpus for text mining
 
 ## create corpus ----

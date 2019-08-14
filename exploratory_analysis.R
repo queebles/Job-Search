@@ -1,4 +1,4 @@
-### After running the jobscraper.R script
+### After running the job_scrape_extract.R script
 ### perform exploratory data analysis
 
 # top jobs

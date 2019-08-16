@@ -1,4 +1,4 @@
-### After running the job_scrape_extract.R script
+### After running the jobscraper.R script
 ### create a corpus for text mining
 
 ## create corpus ----
@@ -111,16 +111,12 @@ clean_stem_corpus <- function(corpus) {
 words <- clean_corpus(words)
 stems <- clean_stem_corpus(words)
 
-## dtm ----
+## create dtm ----
 
 # document-term matrix (DTM) - lists all occurrences of words in corpus
 words_dtm <- TermDocumentMatrix(words)
 stems_dtm <- TermDocumentMatrix(stems)
 rm(words, stems)
-
-# remove less frequent words so that the sparsity is less than 0.95
-words_dtm <- removeSparseTerms(words_dtm, 0.999)
-stems_dtm <- removeSparseTerms(stems_dtm, 0.9997)
 
 # convert dtm to matrix
 words_m <- as.matrix(words_dtm)
@@ -150,26 +146,27 @@ names(stems_freq)[2] <- "num"
 
 # find associations/correlations with term "advanced"
 findAssocs(words_dtm,
-           terms = "advanced",
-           corlimit = 0.4
+           terms = "unnecessary",
+           corlimit = 0.2
 )
-
-findAssocs(stems_dtm,
-           terms = "advanc",
-           corlimit = 0.4
+findAssocs(words_dtm,
+           terms = "reqire",
+           corlimit = 0.2
 )
 
 x <- factor(with(postings1, paste(job_title, sep = "|")))
-word_cor(postings1$job_description, x, "advanced", .9)
+word_cor(postings1$job_description, x, "detail", .7)
 
 # Multiple terms
-words <- c("advanced", "programming", "presentation", "detail")
-with(postings1, word_cor(job_description, x, words, r = .9))
+words <- c("programming", "presentation")
+with(postings1, word_cor(job_description, x, words, r = .8))
+words <- c("programming", "presentation")
+with(postings1, word_cor(job_description, x, words, r = .8))
 
 dat <- wfm(postings1$job_description, x)
 cor(t(dat)[, c("advanced", "programming", "presentation", "detail")])
 
-with(postings1, word_cor(job_description, list(job_title), "love"))
+with(postings1, word_cor(job_description, list(job_title), "advanced"))
 
 # negative correlation
 word_cor(postings1$job_description, x, "advanced", -.05)

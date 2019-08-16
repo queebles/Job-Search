@@ -37,16 +37,11 @@ for (i in 1:length(search)) {
     Sys.sleep(2)
     try(job_title <- page %>%
       html_nodes("div") %>%
-      html_nodes(xpath = '//a[@data-tn-element = "jobTitle"]') %>%
+      html_nodes(xpath = '//a[@data-tn-element="jobTitle"]') %>%
       html_attr("title"))
     try(company_name <- page %>%
       html_nodes("span") %>%
       html_nodes(xpath = '//*[@class="company"]') %>%
-      html_text() %>%
-      stri_trim_both())
-    try(job_location <- page %>%
-      html_nodes("span") %>%
-      html_nodes(xpath = '//*[@class="location"]') %>%
       html_text() %>%
       stri_trim_both())
     try(links <- page %>%
@@ -63,9 +58,8 @@ for (i in 1:length(search)) {
       page2 <- read_html(url2)
       try(job_description[i] <- page2 %>%
         html_nodes("span") %>%
-        html_nodes(xpath = '//*[@class = "jobsearch-JobComponent-description icl-u-xs-mt--md"]') %>%
-        html_text() %>%
-        stri_trim_both())
+        html_nodes(xpath = '//*[@class="jobsearch-JobComponent-description  icl-u-xs-mt--md"]') %>%
+        html_text())
       try(footer[i] <- page2 %>%
         html_nodes("span") %>%
         html_nodes(xpath = '//*[@class="jobsearch-JobMetadataFooter"]') %>%
@@ -75,7 +69,6 @@ for (i in 1:length(search)) {
     vectorList <- list(
       job_title,
       company_name,
-      job_location,
       job_description,
       footer
     )
@@ -98,7 +91,6 @@ for (i in 1:length(search)) {
     names(df) <- (c(
       "job_title",
       "company_name",
-      "job_location",
       "job_description",
       "footer"
     ))

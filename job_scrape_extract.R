@@ -7,7 +7,7 @@ library(tidyverse)
 library(qdap)
 library(data.table)
 library(tm)
-library(viridis)
+library(stringi)
 
 ## web scraping ----
 
@@ -33,26 +33,26 @@ for (i in 1:length(search)) {
       "&start=",
       page_index[i]
     )
-    try(page <- xml2::read_html(url))
+    try(page <- read_html(url))
     Sys.sleep(2)
     try(job_title <- page %>%
-      rvest::html_nodes("div") %>%
-      rvest::html_nodes(xpath = '//a[@data-tn-element = "jobTitle"]') %>%
-      rvest::html_attr("title"))
+      html_nodes("div") %>%
+      html_nodes(xpath = '//a[@data-tn-element = "jobTitle"]') %>%
+      html_attr("title"))
     try(company_name <- page %>%
-      rvest::html_nodes("span") %>%
-      rvest::html_nodes(xpath = '//*[@class="company"]') %>%
-      rvest::html_text() %>%
-      stringi::stri_trim_both())
+      html_nodes("span") %>%
+      html_nodes(xpath = '//*[@class="company"]') %>%
+      html_text() %>%
+      stri_trim_both())
     try(job_location <- page %>%
-      rvest::html_nodes("span") %>%
-      rvest::html_nodes(xpath = '//*[@class="location"]') %>%
-      rvest::html_text() %>%
-      stringi::stri_trim_both())
+      html_nodes("span") %>%
+      html_nodes(xpath = '//*[@class="location"]') %>%
+      html_text() %>%
+      stri_trim_both())
     try(links <- page %>%
-      rvest::html_nodes("div") %>%
-      rvest::html_nodes(xpath = '//*[@data-tn-element="jobTitle"]') %>%
-      rvest::html_attr("href"))
+      html_nodes("div") %>%
+      html_nodes(xpath = '//*[@data-tn-element="jobTitle"]') %>%
+      html_attr("href"))
     job_description <- c()
     footer <- c()
     for (i in 1:length(links)) {
@@ -60,16 +60,16 @@ for (i in 1:length(search)) {
         "https://indeed.com/",
         links[i]
       ))
-      page2 <- xml2::read_html(url2)
+      page2 <- read_html(url2)
       try(job_description[i] <- page2 %>%
-        rvest::html_nodes("span") %>%
-        rvest::html_nodes(xpath = '//*[@class = "jobsearch-JobComponent-description icl-u-xs-mt--md"]') %>%
-        rvest::html_text() %>%
-        stringi::stri_trim_both())
+        html_nodes("span") %>%
+        html_nodes(xpath = '//*[@class = "jobsearch-JobComponent-description icl-u-xs-mt--md"]') %>%
+        html_text() %>%
+        stri_trim_both())
       try(footer[i] <- page2 %>%
-        rvest::html_nodes("span") %>%
-        rvest::html_nodes(xpath = '//*[@class="jobsearch-JobMetadataFooter"]') %>%
-        rvest::html_text())
+        html_nodes("span") %>%
+        html_nodes(xpath = '//*[@class="jobsearch-JobMetadataFooter"]') %>%
+        html_text())
     }
 
     vectorList <- list(
@@ -118,15 +118,55 @@ postings1 <- fread("C:/Users/unlim/Desktop/scrape_2019_08_11.csv",
 
 postings1$V1 <- NULL
 postings1 <- filter(postings1, !is.na(postings1$job_description))
-postings1$job_description <- tolower(postings1$job_description)
+
+# fix job titles, ignore warning
+postings1 <- postings1 %>%
+  separate(job_title, c("job_title"), ",")
+## data cleaning ----
+
+clean_vector <- function(vector) {
+  vector <- tolower(vector)
+  vector <- mgsub(c(" ml ", "machinelearning"), " machine learning ", vector)
+  vector <- mgsub(" ai ", " artificial intelligence ", vector)
+  vector <- mgsub("large data", "big data", vector)
+  vector <- mgsub(" r ", " rprogramming", vector)
+  vector <- mgsub(c("written", "writing"), " write ", vector)
+  vector <- mgsub(" bi ", " business intelligence ", vector)
+  vector <- mgsub(" aws", " amazon web services ", vector)
+  vector <- mgsub("nlp", " natural language processing ", vector)
+  vector <- mgsub("text analysis", " textual ", vector)
+  vector <- mgsub("full-time", " fulltime ", vector)
+  vector <- mgsub("part-time", " parttime ", vector)
+
+  vector <- mgsub(c("not required", "not needed", "not necessar"), " unnecessar", vector)
+  vector <- mgsub(c("electronic medical record", " emr "), " electronic medical records ", vector)
+  vector <- mgsub(" py ", " python ", vector)
+  vector <- mgsub("java script", " javascript ", vector)
+  vector <- clean(vector)
+  vector <- replace_abbreviation(vector)
+  vector <- mgsub("[[:punct:][:blank:]]+", " ", vector)
+  vector <- mgsub(c(" – ", " — ", "-"), " - ", vector)
+  vector <- removePunctuation(vector)
+  vector <- mgsub(c("00000"), "k ", vector)
+  vector <- mgsub("&", " and ", vector)
+  vector <- str_replace_all(vector, regex('\r\n|\n|\t|\r|,|/|<|>|\\.|[:space:]'), ' ')
+  vector <- removeWords(vector, stopwords("en"))
+  vector <- mgsub(c("’", "“", "”"), "", vector)
+  vector <- tolower(vector) # just in case
+  vector <- str_squish(vector)
+  return(vector)
+}
+
+# clean the job description strings
+postings1$job_description <- clean_vector(postings1$job_description)
+postings1 <- as.data.frame(postings1)
+# preview text
+postings1$job_description[5]
 
 # pull education data from the job descriptions
-words_bachelors <- c("ba/bs", " bs", " ba", "b.s.", "b.a.", "bachelors", "bachelor", "bachelor's", "b.a./b.s.")
-words_masters <- c(" mba", "masters", " msc", " ms", "m.s.", "mba", "m.b.a.", "master's", "master")
-words_doctorate <- c(
-  "phd", "p.h.d.", "ph.d", "ph.d.", "ph.d", "phds", "ph.ds", "phd's", "ph.d's", "ph.d.'s",
-  "doctorate", "doctoral", "doctorates", "doctorate's", "doctor", "doctors", "doctor's"
-)
+words_bachelors <- c(" ba bs ", " bs", " ba", "bachelor")
+words_masters <- c(" mba", " msc", " ms", " mba ", "master")
+words_doctorate <- c(" phd ", "doctor")
 
 for (i in 1:nrow(postings1)) {
   bach <- c()
@@ -184,49 +224,23 @@ postings1[
   "min_ed"
 ] <- "bachelors"
 
-## data cleaning ----
+# clean strings from job title
 
-clean_vector <- function(vector) {
-  vector <- mgsub(c("machine learning"), " ml ", vector)
-  vector <- mgsub(c("artificial intelligence"), " ai ", vector)
-  vector <- mgsub(c("business intelligence"), " bi ", vector)
-  vector <- mgsub(c("amazon web services"), " aws ", vector)
-  vector <- mgsub(c("natural language processing"), " nlp ", vector)
-  vector <- mgsub(c("internet of things"), " iot ", vector)
-  vector <- mgsub(c("amazon web services"), " aws ", vector)
-  vector <- mgsub(c("text analysis"), " textual ", vector)
-  vector <- mgsub(c("electronic medical record", "electronic medical records"), " emr ", vector)
-  vector <- mgsub(c("google cloud", "google cloud platform", "google cloud platforms"), " gcp ", vector)
-  vector <- mgsub(c("power bi "), " powerbi ", vector)
-  vector <- mgsub(c(" py "), " python ", vector)
-  vector <- mgsub(c("java script"), " javascript ", vector)
-  vector <- clean(vector)
-  vector <- mgsub(c(",", "/", "(", ")", ":", "!", "?", "."), " ", vector)
-  vector <- mgsub(c(" 000 ", " 000 00 "), "k ", vector)
-  vector <- replace_contraction(vector)
-  vector <- removeWords(vector, stopwords("en"))
-  vector <- Trim(vector)
-  return(vector)
-}
+postings1$job_title <- clean_vector(postings1$job_title)
 
-# clean the job description strings
-postings1$job_description <- clean_vector(postings1$job_description)
-postings1 <- as.data.frame(postings1)
-
-# preview text
-postings1$job_description[5]
-
-# clean the job title strings
-postings1$job_title <- replace_abbreviation(postings1$job_title)
-postings1$job_title <- mgsub(c(" – ", " — ", "-", "("), " - ", postings1$job_title)
-
-# remove redundancies from titles
+# remove redundancies from titles, ignore warning
 postings1 <- postings1 %>%
   separate(job_title, c("job_title"), " - ")
+postings1$job_title <- str_squish(postings1$job_title)
+
+# remove words with less than 3 characters
+postings1$job_title <- rm_nchar_words(postings1$job_title, "1, 2")
+postings1$job_description <- rm_nchar_words(postings1$job_description, "1, 2")
+
+
+# filter jobs based on my preferences
 postings1 <- postings1 %>%
-  separate(job_title, c("job_title"), ",")
-postings1$job_title <- tolower(postings1$job_title)
-postings1$job_title <- Trim(postings1$job_title)
+  filter(!str_detect(job_title, "sr|senior|lead|finance|bank|intern|advertising|industrial|pharma|telecom|marketing|sports|consumer|supply chain|hotel"), !str_detect(job_description, "finance|investment|bank|intern|advertising|industrial|pharma|telecom|marketing|sports|consumer|supply chain|hotel"))
 
 # classify jobs
 postings1[
@@ -427,40 +441,36 @@ jobs_field <- c(
   "psych",
   "health",
   "startup",
-  "finance",
   "engineering",
   "biostatistics",
   "bioinformatics",
   "physics",
   "economics",
-  "computer scien",
-  "marketing",
-  "consumer",
+  "computer science",
   "transportation",
-  "consulting"
+  "consulting",
+  "education"
 )
 
 skills_hard <- c(
   "coding",
   "neural",
-  " nlp ",
+  "natural language processing",
   "deep learning",
-  " ai ",
+  "artificial intelligence",
   "visualiz",
   " math",
   "research",
   "statistic",
-  " ml ",
+  "machine learning",
   "advanced",
   "reporting",
   "wrangl",
   "algebr",
   "hypoth",
   "risk ",
-  " bi ",
+  "business intelligence",
   "cloud",
-  " iot ",
-  " ux design",
   "testing",
   "image process",
   "textual",
@@ -471,13 +481,11 @@ skills_hard <- c(
   "assess",
   "evaluat",
   "instruct",
-  "logistic",
   "curric",
   "server",
   "collect",
   "program",
   "transform",
-  "calculus",
   "automat",
   "workflow",
   "processing",
@@ -489,27 +497,23 @@ skills_hard <- c(
   "algorithm",
   "extrac",
   "regress",
-  "multivari",
   "network",
   "big data",
-  "writ"
+  "write"
 )
 
 skills_soft <- c(
   "multitask",
-  "reasoning",
   "communicat",
   "collaborat",
-  " team",
+  "team",
   "critical think",
   "learn",
   "creativ",
   "train",
   "facilitat",
   "present",
-  "advis",
   "mentor",
-  "persua",
   "insight",
   "managing",
   "plan",
@@ -525,61 +529,43 @@ skills_soft <- c(
   "motivat",
   "vision",
   "design",
-  "launch",
   "disciplin",
   "detail",
   "organized",
   "meaning",
-  "storytel",
   "thinking",
   "priorit",
   "efficien",
-  "precision",
   "listening",
   "adaptab",
   "independ",
   "supervis",
-  "innovat",
-  "discreti"
+  "innovat"
 )
 
 skills_tools <- c(
   "python",
-  " r ",
+  "rprogramming",
   "tableau",
   "scala",
-  "google analytics",
-  "java ",
-  " sql ",
-  "mysql",
-  "nosql",
-  "mongodb",
+  "java",
+  "sql",
   "excel",
   "powerpoint",
   "matlab",
   " sas ",
   "hadoop",
   "tensorflow",
-  "postgres",
-  "linux",
-  " aws ",
   "hive",
   "spark",
-  "powerbi",
   "scikit",
-  "azure",
-  " emr ",
-  "perl",
   "ruby",
   "javascript",
   "spss",
-  "d3",
   "pandas",
-  " pig ",
   "keras",
   "numpy",
-  " caffe",
-  " hbase",
+  "caffe ",
   "pytorch",
   "cassandra",
   "docker",
@@ -589,21 +575,19 @@ skills_tools <- c(
   "markdown",
   "latex",
   "unix",
-  "html",
   "css",
-  " gcp ",
   " gis ",
-  "oozie",
   "stata",
-  " php ",
   "shiny",
-  "oracle"
+  "oracle",
+  "graphml",
+  "jupyter"
 )
 
 jobs_type <- c(
   "consultant",
-  "full-time",
-  "part-time",
+  "fulltime",
+  "parttime",
   "temp",
   "contract"
 )
@@ -636,7 +620,7 @@ for (h in jobs_type) {
 n <- nrow(postings1)
 
 for (i in seq_len(n)) {
-  for (j in names(postings_field)[16:29]) {
+  for (j in names(postings_field)[16:27]) {
     postings_field[[j]][i] <- if_else(str_detect(
       postings1$job_description[i],
       j
@@ -645,7 +629,7 @@ for (i in seq_len(n)) {
 }
 
 for (i in seq_len(n)) {
-  for (j in names(postings_hard)[16:67]) {
+  for (j in names(postings_hard)[16:62]) {
     postings_hard[[j]][i] <- if_else(str_detect(
       postings1$job_description[i],
       j
@@ -654,7 +638,7 @@ for (i in seq_len(n)) {
 }
 
 for (i in seq_len(n)) {
-  for (j in names(postings_soft)[16:60]) {
+  for (j in names(postings_soft)[16:53]) {
     postings_soft[[j]][i] <- if_else(str_detect(
       postings1$job_description[i],
       j
@@ -663,7 +647,7 @@ for (i in seq_len(n)) {
 }
 
 for (i in seq_len(n)) {
-  for (j in names(postings_tools)[16:68]) {
+  for (j in names(postings_tools)[16:53]) {
     postings_tools[[j]][i] <- if_else(str_detect(
       postings1$job_description[i],
       j
@@ -685,18 +669,15 @@ names(postings_hard) <- Trim(names(postings_hard))
 names(postings_soft) <- Trim(names(postings_soft))
 names(postings_tools) <- Trim(names(postings_tools))
 names(postings_type) <- Trim(names(postings_type))
-postings_field[16:29] <- lapply(postings_field[16:29], as.logical)
-postings_hard[16:67] <- lapply(postings_hard[16:67], as.logical)
-postings_soft[16:60] <- lapply(postings_soft[16:60], as.logical)
-postings_tools[16:68] <- lapply(postings_tools[16:68], as.logical)
+postings_field[16:27] <- lapply(postings_field[16:27], as.logical)
+postings_hard[16:62] <- lapply(postings_hard[16:62], as.logical)
+postings_soft[16:53] <- lapply(postings_soft[16:53], as.logical)
+postings_tools[16:53] <- lapply(postings_tools[16:53], as.logical)
 postings_type[16:20] <- lapply(postings_type[16:20], as.logical)
 
 # see how it worked
-postings_field[16:29] %>% colSums(na.rm = TRUE)
-postings_hard[16:67] %>% colSums(na.rm = TRUE)
-postings_soft[16:60] %>% colSums(na.rm = TRUE)
-postings_tools[16:68] %>% colSums(na.rm = TRUE)
+postings_field[16:27] %>% colSums(na.rm = TRUE)
+postings_hard[16:62] %>% colSums(na.rm = TRUE)
+postings_soft[16:53] %>% colSums(na.rm = TRUE)
+postings_tools[16:53] %>% colSums(na.rm = TRUE)
 postings_type[16:20] %>% colSums(na.rm = TRUE)
-
-postings1$job_description <- removePunctuation(postings1$job_description)
-postings1$job_title <- removePunctuation(postings1$job_title)

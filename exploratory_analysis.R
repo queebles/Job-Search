@@ -1,4 +1,4 @@
-### After running the job_scrape_extract.R script
+### After running the job_scrape_extract.R and textual_analysis.R scripts
 ### perform exploratory data analysis
 
 # top jobs

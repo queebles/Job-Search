@@ -58,7 +58,7 @@ for (i in 1:length(search)) {
       page2 <- read_html(url2)
       try(job_description[i] <- page2 %>%
         html_nodes("span") %>%
-        html_nodes(xpath = '//*[@class="jobsearch-JobComponent-description  icl-u-xs-mt--md"]') %>%
+        html_nodes(xpath = '//*[@class="jobsearch-JobComponent-description  icl-u-xs-mt--md  "]') %>%
         html_text())
       try(footer[i] <- page2 %>%
         html_nodes("span") %>%
